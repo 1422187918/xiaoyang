@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>A股实时监测</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e27;--card:#131836;--card-hover:#1a2040;--red:#ff4d4f;--green:#00c853;--text:#e0e0e0;--sub:#888;--gold:#ffd700;--border:#1e2a5e;--blue:#4488ff}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;min-height:100vh;padding-bottom:60px}
+.container{max-width:1200px;margin:0 auto;padding:8px}
+
+/* 顶部指数 */
+.index-bar{display:flex;gap:6px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
+.index-bar::-webkit-scrollbar{display:none}
+.index-card{flex:1;min-width:100px;background:var(--card);border-radius:10px;padding:10px 8px;text-align:center;border:1px solid var(--border)}
+.index-card .name{font-size:11px;color:var(--sub);margin-bottom:4px}
+.index-card .price{font-size:18px;font-weight:700}
+.index-card .pct{font-size:12px;margin-top:2px}
+
+/* 黄金实时价格区域 */
+.gold-price-bar{display:flex;gap:6px;margin:6px 0}
+.gold-price-card{flex:1;background:var(--card);border-radius:10px;padding:10px 8px;text-align:center;border:1px solid var(--border)}
+.gold-price-card .g-name{font-size:11px;margin-bottom:4px;font-weight:600}
+.gold-price-card .g-price{font-size:18px;font-weight:700}
+.gold-price-card .g-change{font-size:12px;margin-top:2px}
+.gold-price-card .g-pct{font-size:12px;margin-top:1px}
+.gold-intl{border-color:rgba(255,215,0,.4);background:linear-gradient(135deg,#1a1a3e,#2a2a1e)}
+.gold-intl .g-name{color:var(--gold)}
+.gold-domestic{border-color:rgba(255,77,79,.4);background:linear-gradient(135deg,#1a2e1e,#2e1e1e)}
+.gold-domestic .g-name{color:var(--red)}
+
+/* 汇总栏 */
+.summary-bar{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+.summary-item{flex:1;min-width:70px;background:var(--card);border-radius:8px;padding:8px;text-align:center;border:1px solid var(--border)}
+.summary-item .sl-name{font-size:10px;color:var(--sub)}
+.summary-item .sl-val{font-size:16px;font-weight:700;margin-top:2px}
+
+/* 情绪条 */
+.sentiment-bar-wrap{margin:8px 0;background:var(--card);border-radius:8px;padding:10px;border:1px solid var(--border)}
+.sentiment-bar-wrap .sb-label{font-size:11px;color:var(--sub);margin-bottom:6px;display:flex;justify-content:space-between}
+.sentiment-bar{height:24px;border-radius:12px;overflow:hidden;display:flex;position:relative}
+.sentiment-bar .sb-up{background:linear-gradient(90deg,#ff4d4f,#ff7a45);transition:width .5s}
+.sentiment-bar .sb-down{background:linear-gradient(90deg,#00c853,#00b860);transition:width .5s}
+.sentiment-bar .sb-text{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,.8)}
+
+/* 板块网格 */
+.section-title{font-size:15px;font-weight:700;margin:14px 0 8px;padding-left:4px;border-left:3px solid var(--blue);line-height:1.4}
+.sector-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+@media(min-width:600px){.sector-grid{grid-template-columns:repeat(3,1fr);gap:8px}}
+@media(min-width:900px){.sector-grid{grid-template-columns:repeat(4,1fr)}}
+.sector-card{background:var(--card);border-radius:10px;padding:10px 8px;cursor:pointer;transition:all .2s;border:1px solid var(--border);position:relative;overflow:hidden}
+.sector-card:active{transform:scale(.97)}
+.sector-card .s-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.sector-card .s-pct{font-size:20px;font-weight:700;line-height:1.2}
+.sector-card .s-flow{font-size:10px;color:var(--sub);margin-top:3px}
+.sector-card .s-bar{height:3px;border-radius:2px;margin-top:6px}
+
+/* 成分股展开 */
+.stock-list{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.sector-card.expanded{border:1px solid rgba(68,136,255,.5);box-shadow:0 0 12px rgba(68,136,255,.15)}
+.sector-card .s-name{display:flex;align-items:center;justify-content:space-between}
+.stock-list.show{display:block}
+.stock-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px}
+.stock-item .si-name{flex:1;color:var(--text)}
+.stock-item .si-price{margin:0 8px;font-weight:600}
+.stock-item .si-pct{min-width:50px;text-align:right;font-weight:600}
+
+/* 涨跌排行 */
+.rank-section{display:flex;gap:8px;margin:8px 0}
+.rank-col{flex:1;background:var(--card);border-radius:10px;padding:8px;border:1px solid var(--border)}
+.rank-col h4{font-size:12px;color:var(--sub);margin-bottom:6px;text-align:center}
+.rank-item{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.03)}
+.rank-item:last-child{border-bottom:none}
+.rank-item .ri-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank-item .ri-pct{margin-left:8px;font-weight:600}
+
+/* 板块排行表 */
+.sector-rank-table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+.sector-rank-table th{color:var(--sub);font-weight:400;padding:6px 4px;text-align:left;border-bottom:1px solid var(--border);font-size:11px}
+.sector-rank-table td{padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.03)}
+.sector-rank-table tr:active{background:var(--card-hover)}
+.flow-bar{display:inline-block;height:8px;border-radius:4px;vertical-align:middle;margin-right:4px}
+
+/* 资金流向排行 */
+.flow-rank-list{margin:8px 0}
+.flow-rank-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.flow-rank-item:last-child{border-bottom:none}
+.flow-rank-item .fr-name{width:80px;font-size:12px;font-weight:600}
+.flow-rank-item .fr-bar{flex:1;height:16px;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.05);position:relative}
+.flow-rank-item .fr-bar-fill{height:100%;border-radius:8px;transition:width .5s}
+.flow-rank-item .fr-val{width:70px;text-align:right;font-size:12px;font-weight:600}
+
+/* 情绪仪表盘 */
+.sentiment-gauge-wrap{margin:8px 0;background:var(--card);border-radius:10px;padding:12px;border:1px solid var(--border);text-align:center}
+.sentiment-gauge{position:relative;max-width:240px;margin:0 auto}
+.gauge-value{font-size:28px;font-weight:700;margin-top:-30px;position:relative;z-index:1}
+.gauge-label{font-size:12px;color:var(--sub);margin-top:4px}
+.gauge-scale{display:flex;justify-content:space-between;font-size:10px;color:var(--sub);margin-top:4px;padding:0 10px}
+
+/* 复盘播报 */
+.review-card{margin:8px 0;background:var(--card);border-radius:10px;padding:14px;border:1px solid var(--border)}
+.review-card .rv-title{font-size:15px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.review-card .rv-content{font-size:13px;line-height:1.8;color:var(--text)}
+.review-card .rv-content .rv-row{display:flex;justify-content:space-between;padding:2px 0}
+.review-card .rv-content .rv-row .rv-val{font-weight:600}
+.rv-section{margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+.rv-section-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:6px}
+.rv-summary{text-align:left;font-size:13px;line-height:2;color:var(--text);background:rgba(68,136,255,.06);border-radius:8px;padding:10px;margin-top:8px}
+.rv-summary .highlight{font-weight:700}
+.rv-sector-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}
+.rv-sector-table th{color:var(--sub);font-weight:400;padding:5px 4px;text-align:left;border-bottom:1px solid var(--border);font-size:11px}
+.rv-sector-table td{padding:5px 4px;border-bottom:1px solid rgba(255,255,255,.03)}
+.rv-stock-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.rv-stock-tag{display:inline-flex;align-items:center;gap:3px;background:rgba(255,255,255,.05);border-radius:6px;padding:3px 8px;font-size:11px}
+.rv-stock-tag .tag-name{font-weight:600}
+.rv-stock-tag .tag-pct{font-weight:700}
+.rv-flow-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px}
+.rv-flow-row .rf-name{width:70px;font-weight:600}
+.rv-flow-row .rf-bar{flex:1;height:10px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden}
+.rv-flow-row .rf-fill{height:100%;border-radius:5px}
+.rv-flow-row .rf-val{width:65px;text-align:right;font-weight:600}
+
+/* 底部 */
+.footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1px solid var(--border);padding:6px 8px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sub);z-index:100}
+.footer .refresh-info{display:flex;align-items:center;gap:4px}
+.refresh-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.red{color:var(--red)}
+.green{color:var(--green)}
+.loading{text-align:center;color:var(--sub);padding:20px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- 1. 大盘指数 -->
+  <div class="index-bar" id="indexBar">
+    <div class="loading">加载中...</div>
+  </div>
+
+  <!-- 2. 黄金实时价格 -->
+  <div class="gold-price-bar" id="goldPriceBar">
+    <div class="gold-price-card gold-intl">
+      <div class="g-name">国际金价（COMEX黄金）</div>
+      <div class="g-price" id="intlGoldPrice">--</div>
+      <div class="g-change" id="intlGoldChange">--</div>
+      <div class="g-pct" id="intlGoldPct">--</div>
+    </div>
+    <div class="gold-price-card gold-domestic">
+      <div class="g-name">国内金价（上海黄金9999）</div>
+      <div class="g-price" id="domGoldPrice">--</div>
+      <div class="g-change" id="domGoldChange">--</div>
+      <div class="g-pct" id="domGoldPct">--</div>
+    </div>
+  </div>
+
+  <!-- 3. 汇总栏 - 样本股涨跌统计 -->
+  <div class="summary-bar" id="summaryBar"></div>
+  <div class="sentiment-bar-wrap" id="sentimentBarWrap" style="display:none">
+    <div class="sb-label"><span>样本股多空力量对比（共67只）</span><span id="sbRatio">--</span></div>
+    <div class="sentiment-bar">
+      <div class="sb-up" style="width:50%"></div>
+      <div class="sb-down" style="width:50%"></div>
+      <div class="sb-text" id="sbText">上涨 0 | 下跌 0</div>
+    </div>
+  </div>
+
+  <!-- 4. 市场情绪指标 -->
+  <div class="section-title">市场情绪指标 <span style="font-size:11px;color:var(--sub);font-weight:400">（基于67只样本股）</span></div>
+  <div class="sentiment-gauge-wrap">
+    <div class="sentiment-gauge" id="sentimentGauge">
+      <svg viewBox="0 0 200 110">
+        <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e2a5e" stroke-width="14" stroke-linecap="round"/>
+        <path id="gaugeArc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#4488ff" stroke-width="14" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="125.6"/>
+        <circle id="gaugeDot" cx="100" cy="20" r="4" fill="#fff"/>
+      </svg>
+      <div class="gauge-value">
+        <span id="gaugeNum">50</span>
+      </div>
+      <div class="gauge-label" id="gaugeLabel">中性</div>
+      <div class="gauge-scale">
+        <span>极度恐慌</span>
+        <span>恐慌</span>
+        <span>中性</span>
+        <span>贪婪</span>
+        <span>极度贪婪</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 板块热力图 -->
+  <div class="section-title">板块热力图</div>
+  <div class="sector-grid" id="sectorGrid"></div>
+
+  <!-- 6. 板块涨跌排行 -->
+  <div class="section-title">板块涨跌排行</div>
+  <div class="rank-section">
+    <div class="rank-col">
+      <h4 style="color:var(--red)">涨幅 TOP5</h4>
+      <div id="rankUp"></div>
+    </div>
+    <div class="rank-col">
+      <h4 style="color:var(--green)">跌幅 TOP5</h4>
+      <div id="rankDown"></div>
+    </div>
+  </div>
+
+  <!-- 7. 板块资金流向 -->
+  <div class="section-title">板块资金流向</div>
+  <div class="flow-rank-list" id="flowRank"></div>
+
+  <!-- 8. 个股涨跌排行 -->
+  <div class="section-title">个股涨跌排行 TOP5</div>
+  <div class="rank-section">
+    <div class="rank-col">
+      <h4 style="color:var(--red)">涨幅 TOP5</h4>
+      <div id="stockRankUp"></div>
+    </div>
+    <div class="rank-col">
+      <h4 style="color:var(--green)">跌幅 TOP5</h4>
+      <div id="stockRankDown"></div>
+    </div>
+  </div>
+
+  <!-- 9. 晚间复盘播报 -->
+  <div class="section-title">今日复盘播报</div>
+  <div class="review-card" id="reviewCard">
+    <div class="rv-title">📊 等待收盘后生成复盘...</div>
+  </div>
+</div>
+
+<!-- 底部状态栏 -->
+<div class="footer">
+  <div class="refresh-info">
+    <div class="refresh-dot"></div>
+    <span id="refreshInfo">刷新中...</span>
+  </div>
+  <div>A股实时监测 · 5秒自动刷新</div>
+</div>
+
+<script>
+// ====== 配置 ======
+const REFRESH_MS = 5000;
+const GOLD_INTL_API = 'https://push2.eastmoney.com/api/qt/stock/get?secid=101.GC00Y&fields=f43,f44,f45,f46,f57,f58,f60,f170&ut=fa5fd1943c7b386f172d6893dbbd1d34';
+const GOLD_DOM_API = 'https://push2.eastmoney.com/api/qt/stock/get?secid=118.AU9999&fields=f43,f44,f45,f46,f57,f58,f60,f170&ut=fa5fd1943c7b386f172d6893dbbd1d34';
+
+const INDEX_CODES = [
+  {c:'sh000001', n:'上证指数'},
+  {c:'sz399001', n:'深证成指'},
+  {c:'sz399006', n:'创业板指'}
+];
+
+const SECTORS = [
+  {name:'科技半导体', stocks:[
+    {c:'sh688981', n:'中芯国际'},{c:'sz002049', n:'紫光国微'},{c:'sh603501', n:'韦尔股份'},
+    {c:'sz002230', n:'科大讯飞'},{c:'sh688256', n:'寒武纪'},{c:'sz300054', n:'鼎龙股份'},
+    {c:'sh688012', n:'中微公司'},{c:'sz002405', n:'四维图新'}
+  ]},
+  {name:'新能源', stocks:[
+    {c:'sz300750', n:'宁德时代'},{c:'sz002594', n:'比亚迪'},{c:'sh601012', n:'隆基绿能'},
+    {c:'sz300274', n:'阳光电源'},{c:'sh600438', n:'通威股份'},{c:'sz002129', n:'TCL中环'}
+  ]},
+  {name:'金融', stocks:[
+    {c:'sh601398', n:'工商银行'},{c:'sh601318', n:'中国平安'},
+    {c:'sh600036', n:'招商银行'},{c:'sh601628', n:'中国人寿'},
+    {c:'sz000001', n:'平安银行'},{c:'sh601336', n:'新华保险'}
+  ]},
+  {name:'消费', stocks:[
+    {c:'sh600519', n:'贵州茅台'},{c:'sz000858', n:'五粮液'},{c:'sh600887', n:'伊利股份'},
+    {c:'sh603288', n:'海天味业'},{c:'sz002304', n:'洋河股份'},{c:'sh600600', n:'青岛啤酒'}
+  ]},
+  {name:'医药', stocks:[
+    {c:'sh600276', n:'恒瑞医药'},{c:'sz300760', n:'迈瑞医疗'},{c:'sz000538', n:'云南白药'},
+    {c:'sh600196', n:'复星医药'},{c:'sz300003', n:'乐普医疗'}
+  ]},
+  {name:'军工', stocks:[
+    {c:'sh601989', n:'中国重工'},{c:'sh600893', n:'航发动力'},{c:'sz002179', n:'中航光电'},
+    {c:'sh600760', n:'中航沈飞'},{c:'sh601698', n:'中国卫通'}
+  ]},
+  {name:'资源周期', stocks:[
+    {c:'sh601899', n:'紫金矿业'},{c:'sh600585', n:'海螺水泥'},{c:'sz000878', n:'云南铜业'},
+    {c:'sh601600', n:'中国铝业'},{c:'sh600028', n:'中国石化'},{c:'sh601857', n:'中国石油'}
+  ]},
+  {name:'制造', stocks:[
+    {c:'sz000333', n:'美的集团'},{c:'sz000651', n:'格力电器'},{c:'sh601138', n:'工业富联'},
+    {c:'sz002475', n:'立讯精密'},{c:'sh600009', n:'上海机场'},{c:'sh601766', n:'中国中车'}
+  ]},
+  {name:'基建地产', stocks:[
+    {c:'sh601668', n:'中国建筑'},{c:'sh600048', n:'保利发展'},{c:'sh601390', n:'中国中铁'},
+    {c:'sz000002', n:'万科A'},{c:'sh601800', n:'中国交建'}
+  ]},
+  {name:'传媒文娱', stocks:[
+    {c:'sz002415', n:'海康威视'},{c:'sh688111', n:'金山办公'},{c:'sz300413', n:'芒果超媒'},
+    {c:'sh603444', n:'吉比特'},{c:'sz002555', n:'三七互娱'}
+  ]},
+  {name:'农业', stocks:[
+    {c:'sh600598', n:'北大荒'},{c:'sz000998', n:'隆平高科'},{c:'sz002714', n:'牧原股份'},
+    {c:'sh603363', n:'傲农生物'}
+  ]},
+  {name:'公用事业', stocks:[
+    {c:'sh600900', n:'长江电力'},{c:'sh601985', n:'中国核电'},{c:'sh600023', n:'浙能电力'},
+    {c:'sz000683', n:'兴业太阳能'},{c:'sh600886', n:'国投电力'}
+  ]}
+];
+
+// ====== 全局状态 ======
+let allStockData = {};
+let sectorData = [];
+let expandedSectors = new Set(); // 记住展开的板块
+
+// ====== 工具函数 ======
+function fmtPrice(p){return p!=null && !isNaN(p) ? p.toFixed(2) : '--'}
+function fmtPct(p){return p!=null && !isNaN(p) ? (p>=0?'+':'') + p.toFixed(2) + '%' : '--'}
+function fmtFlow(f){
+  if(f==null || isNaN(f)) return '--';
+  const abs = Math.abs(f);
+  if(abs >= 1e8) return (f/1e8).toFixed(2) + '亿';
+  if(abs >= 1e4) return (f/1e4).toFixed(2) + '万';
+  return f.toFixed(0);
+}
+function colorClass(p){
+  if(p==null || isNaN(p)) return '';
+  return p >= 0 ? 'red' : 'green';
+}
+function isLimitUp(code, pct){
+  if(code.startsWith('sz300') || code.startsWith('sh688')) return pct >= 19.9;
+  return pct >= 9.9;
+}
+function isLimitDown(code, pct){
+  if(code.startsWith('sz300') || code.startsWith('sh688')) return pct <= -19.9;
+  return pct <= -9.9;
+}
+
+// ====== 数据获取 ======
+async function fetchAllData(){
+  const codes = [];
+  INDEX_CODES.forEach(i=>codes.push(i.c));
+  SECTORS.forEach(s=>s.stocks.forEach(st=>codes.push(st.c)));
+
+  const url = 'https://qt.gtimg.cn/q=' + codes.join(',');
+  try{
+    const resp = await fetch(url);
+    const text = await resp.text();
+    parseData(text);
+    await fetchIntlGold();
+    await fetchDomesticGold();
+  }catch(e){
+    console.error('fetch error',e);
+    document.getElementById('refreshInfo').textContent='网络错误，重试中...';
+  }
+}
+
+// 获取国际金价（东方财富API - COMEX黄金期货 GC00Y）
+async function fetchIntlGold(){
+  try{
+    const resp = await fetch(GOLD_INTL_API);
+    const json = await resp.json();
+    if(json && json.data){
+      const d = json.data;
+      const price = (d.f43 || 0) / 10;
+      const prevClose = (d.f60 || 0) / 10;
+      const pct = (d.f170 || 0) / 100;
+      const change = price - prevClose;
+      const open = (d.f46 || 0) / 10;
+      const high = (d.f44 || 0) / 10;
+      const low = (d.f45 || 0) / 10;
+      const name = d.f58 || 'COMEX黄金';
+      allStockData['INTL_GOLD'] = {
+        name, price, change, pct, prevClose,
+        high, low, open, volume: 0, turnover: 0, turnoverRate: 0, mainFlow: 0
+      };
+    }
+  }catch(e){
+    console.error('fetch intl gold error', e);
+  }
+}
+
+// 获取国内金价 AU9999（东方财富API）
+async function fetchDomesticGold(){
+  try{
+    const resp = await fetch(GOLD_DOM_API);
+    const json = await resp.json();
+    if(json && json.data){
+      const d = json.data;
+      const price = d.f43 / 100;
+      const prevClose = d.f60 / 100;
+      const pct = d.f170 / 100;
+      const change = price - prevClose;
+      allStockData['AU9999'] = {
+        name: d.f58 || '黄金9999',
+        price: price,
+        prevClose: prevClose,
+        change: change,
+        pct: pct,
+        high: d.f44 / 100,
+        low: d.f45 / 100,
+        open: d.f46 / 100,
+        volume: 0,
+        turnover: 0,
+        turnoverRate: 0,
+        mainFlow: 0
+      };
+    }
+  }catch(e){
+    console.error('fetch domestic gold error', e);
+  }
+}
+
+function parseData(text){
+  const lines = text.split(';').filter(l=>l.trim());
+  lines.forEach(line=>{
+    const match = line.match(/v_(\w+)="(.*)"/);
+    if(!match) return;
+    const code = match[1];
+    const dataStr = match[2];
+    const fields = dataStr.split('~');
+    if(fields.length < 45) return;
+
+    const name = fields[1] || code;
+    const price = parseFloat(fields[3]) || 0;
+    const prevClose = parseFloat(fields[4]) || 0;
+    const pct = parseFloat(fields[32]) || 0;
+    const change = price - prevClose;
+    const high = parseFloat(fields[33]) || 0;
+    const low = parseFloat(fields[34]) || 0;
+    const volume = parseFloat(fields[36]) || 0;
+    const turnover = parseFloat(fields[37]) || 0;
+    const turnoverRate = parseFloat(fields[38]) || 0;
+    let mainFlow = 0;
+    if(fields.length > 184){
+      mainFlow = parseFloat(fields[184]) || 0;
+    }
+    if(!mainFlow && fields.length > 62){
+      mainFlow = parseFloat(fields[62]) || 0;
+    }
+    if(!mainFlow){
+      mainFlow = change * volume * 100 * 0.3;
+    }
+    allStockData[code] = {
+      name, price, prevClose, change, pct, high, low,
+      volume, turnover, turnoverRate, mainFlow
+    };
+  });
+}
+
+// ====== 渲染：大盘指数 ======
+function renderIndexBar(){
+  const bar = document.getElementById('indexBar');
+  let html = '';
+  INDEX_CODES.forEach(idx=>{
+    const d = allStockData[idx.c];
+    if(!d){return;}
+    const cls = colorClass(d.pct);
+    html += `<div class="index-card">
+      <div class="name">${idx.n}</div>
+      <div class="price ${cls}">${fmtPrice(d.price)}</div>
+      <div class="pct ${cls}">${fmtPct(d.pct)}</div>
+    </div>`;
+  });
+  bar.innerHTML = html;
+}
+
+// ====== 渲染：黄金实时价格 ======
+function renderGoldPrice(){
+  // 国际金价（东方财富 - COMEX黄金，美元/盎司）
+  const intl = allStockData['INTL_GOLD'];
+  const intlPriceEl = document.getElementById('intlGoldPrice');
+  const intlChangeEl = document.getElementById('intlGoldChange');
+  const intlPctEl = document.getElementById('intlGoldPct');
+  if(intl && intl.price > 0){
+    const cls = intl.pct >= 0 ? 'red' : 'green';
+    intlPriceEl.textContent = '$' + intl.price.toFixed(2) + ' /盎司';
+    intlPriceEl.className = 'g-price ' + cls;
+    intlChangeEl.textContent = (intl.change >= 0 ? '+' : '') + intl.change.toFixed(2);
+    intlChangeEl.className = 'g-change ' + cls;
+    intlPctEl.textContent = fmtPct(intl.pct);
+    intlPctEl.className = 'g-pct ' + cls;
+  } else {
+    intlPriceEl.textContent = '--';
+    intlPriceEl.className = 'g-price';
+    intlChangeEl.textContent = '--';
+    intlChangeEl.className = 'g-change';
+    intlPctEl.textContent = '--';
+    intlPctEl.className = 'g-pct';
+  }
+
+  // 国内金价 AU9999
+  const dom = allStockData['AU9999'];
+  const domPriceEl = document.getElementById('domGoldPrice');
+  const domChangeEl = document.getElementById('domGoldChange');
+  const domPctEl = document.getElementById('domGoldPct');
+  if(dom && dom.price > 0){
+    const cls = dom.pct >= 0 ? 'red' : 'green';
+    domPriceEl.textContent = dom.price.toFixed(2) + ' 元/克';
+    domPriceEl.className = 'g-price ' + cls;
+    domChangeEl.textContent = (dom.change >= 0 ? '+' : '') + dom.change.toFixed(2);
+    domChangeEl.className = 'g-change ' + cls;
+    domPctEl.textContent = fmtPct(dom.pct);
+    domPctEl.className = 'g-pct ' + cls;
+  } else {
+    domPriceEl.textContent = '--';
+    domPriceEl.className = 'g-price';
+    domChangeEl.textContent = '--';
+    domChangeEl.className = 'g-change';
+    domPctEl.textContent = '--';
+    domPctEl.className = 'g-pct';
+  }
+}
+
+// ====== 渲染：汇总栏 ======
+function renderSummary(){
+  const bar = document.getElementById('summaryBar');
+  const sbWrap = document.getElementById('sentimentBarWrap');
+  let upCount=0, downCount=0, flatCount=0, totalFlow=0;
+  let limitUp=0, limitDown=0;
+
+  SECTORS.forEach(s=>{
+    s.stocks.forEach(st=>{
+      const d = allStockData[st.c];
+      if(!d) return;
+      if(d.pct > 0) upCount++;
+      else if(d.pct < 0) downCount++;
+      else flatCount++;
+      if(isLimitUp(st.c, d.pct)) limitUp++;
+      if(isLimitDown(st.c, d.pct)) limitDown++;
+      totalFlow += d.mainFlow || 0;
+    });
+  });
+
+  const total = upCount + downCount + flatCount;
+  bar.innerHTML = `
+    <div class="summary-item"><div class="sl-name">上涨</div><div class="sl-val red">${upCount}</div></div>
+    <div class="summary-item"><div class="sl-name">下跌</div><div class="sl-val green">${downCount}</div></div>
+    <div class="summary-item"><div class="sl-name">平盘</div><div class="sl-val">${flatCount}</div></div>
+    <div class="summary-item"><div class="sl-name">涨停</div><div class="sl-val red">${limitUp}</div></div>
+    <div class="summary-item"><div class="sl-name">跌停</div><div class="sl-val green">${limitDown}</div></div>
+    <div class="summary-item"><div class="sl-name">主力净流</div><div class="sl-val ${totalFlow>=0?'red':'green'}">${fmtFlow(totalFlow)}</div></div>
+  `;
+
+  // 多空力量对比条
+  if(total > 0){
+    sbWrap.style.display = 'block';
+    const upPct = (upCount / total * 100).toFixed(1);
+    const downPct = (downCount / total * 100).toFixed(1);
+    document.querySelector('.sb-up').style.width = upPct + '%';
+    document.querySelector('.sb-down').style.width = downPct + '%';
+    document.getElementById('sbText').textContent = `上涨 ${upCount} | 下跌 ${downCount}`;
+    document.getElementById('sbRatio').textContent = `${upPct}% : ${downPct}%`;
+  }
+}
+
+// ====== 渲染：市场情绪仪表盘 ======
+function renderSentimentGauge(){
+  let upCount=0, downCount=0, limitUp=0, limitDown=0;
+  SECTORS.forEach(s=>{
+    s.stocks.forEach(st=>{
+      const d = allStockData[st.c];
+      if(!d) return;
+      if(d.pct > 0) upCount++;
+      else if(d.pct < 0) downCount++;
+      if(isLimitUp(st.c, d.pct)) limitUp++;
+      if(isLimitDown(st.c, d.pct)) limitDown++;
+    });
+  });
+  const total = upCount + downCount;
+  if(total === 0) return;
+
+  // 情绪分数: 0-100
+  const upRatio = upCount / total;
+  const limitBonus = (limitUp - limitDown) / total * 20;
+  let score = Math.round(upRatio * 100 + limitBonus);
+  score = Math.max(0, Math.min(100, score));
+
+  // 仪表盘弧线
+  const arcLength = 251.3;
+  const offset = arcLength * (1 - score / 100);
+  document.getElementById('gaugeArc').setAttribute('stroke-dashoffset', offset);
+
+  // 指针位置
+  const angle = 180 - (score / 100) * 180;
+  const rad = angle * Math.PI / 180;
+  const cx = 100 + 80 * Math.cos(rad);
+  const cy = 100 - 80 * Math.sin(rad);
+  document.getElementById('gaugeDot').setAttribute('cx', cx);
+  document.getElementById('gaugeDot').setAttribute('cy', cy);
+
+  // 数值和标签
+  document.getElementById('gaugeNum').textContent = score;
+  let label, color;
+  if(score < 20){label='极度恐慌'; color='#00c853'}
+  else if(score < 40){label='恐慌'; color='#4488ff'}
+  else if(score < 60){label='中性'; color='#888'}
+  else if(score < 80){label='贪婪'; color='#ff7a45'}
+  else{label='极度贪婪'; color='#ff4d4f'}
+  const gaugeLabel = document.getElementById('gaugeLabel');
+  gaugeLabel.textContent = label;
+  gaugeLabel.style.color = color;
+  document.getElementById('gaugeNum').style.color = color;
+}
+
+// ====== 渲染：板块热力图 ======
+function renderSectorGrid(){
+  const grid = document.getElementById('sectorGrid');
+  sectorData = [];
+  grid.innerHTML = '';
+  SECTORS.forEach(s=>{
+    let totalFlow=0, totalPct=0, count=0;
+    s.stocks.forEach(st=>{
+      const d = allStockData[st.c];
+      if(d){
+        totalFlow += d.mainFlow || 0;
+        totalPct += d.pct || 0;
+        count++;
+      }
+    });
+    const avgPct = count > 0 ? totalPct / count : 0;
+    sectorData.push({name:s.name, pct:avgPct, flow:totalFlow, stocks:s.stocks});
+
+    const cls = avgPct >= 0 ? 'red' : 'green';
+    const bgColor = avgPct >= 0
+      ? `rgba(255,77,79,${Math.min(Math.abs(avgPct)/5, 0.3)})`
+      : `rgba(0,200,83,${Math.min(Math.abs(avgPct)/5, 0.3)})`;
+    const flowCls = totalFlow >= 0 ? 'red' : 'green';
+
+    const isExpanded = expandedSectors.has(s.name);
+    grid.innerHTML += `<div class="sector-card${isExpanded?' expanded':''}" style="background:${bgColor}" onclick="toggleStocks(this, '${s.name}')">
+      <div class="s-name">${s.name} ${isExpanded?'▾':'▸'}</div>
+      <div class="s-pct ${cls}">${fmtPct(avgPct)}</div>
+      <div class="s-flow ${flowCls}">${totalFlow>=0?'净流入':'净流出'} ${fmtFlow(totalFlow)}</div>
+      <div class="s-bar" style="background:${avgPct>=0?'var(--red)':'var(--green)'};width:${Math.min(Math.abs(avgPct)*10, 100)}%"></div>
+      <div class="stock-list${isExpanded?' show':''}" id="stocks_${s.name}">
+        ${s.stocks.map(st=>{
+          const d = allStockData[st.c];
+          if(!d) return '';
+          const c = colorClass(d.pct);
+          return `<div class="stock-item">
+            <span class="si-name">${st.n}</span>
+            <span class="si-price ${c}">${fmtPrice(d.price)}</span>
+            <span class="si-pct ${c}">${fmtPct(d.pct)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  });
+}
+
+function toggleStocks(el, name){
+  const list = el.querySelector('.stock-list');
+  if(!list) return;
+  if(expandedSectors.has(name)){
+    expandedSectors.delete(name);
+    list.classList.remove('show');
+    el.classList.remove('expanded');
+    el.querySelector('.s-name').textContent = el.querySelector('.s-name').textContent.replace('▾','▸');
+  } else {
+    expandedSectors.add(name);
+    list.classList.add('show');
+    el.classList.add('expanded');
+    el.querySelector('.s-name').textContent = el.querySelector('.s-name').textContent.replace('▸','▾');
+  }
+}
+
+// ====== 渲染：板块涨跌排行 ======
+function renderSectorRanking(){
+  const sorted = [...sectorData].sort((a,b)=>b.pct - a.pct);
+  const top5 = sorted.slice(0, 5);
+  const bottom5 = sorted.slice(-5).reverse();
+
+  const upEl = document.getElementById('rankUp');
+  const downEl = document.getElementById('rankDown');
+
+  upEl.innerHTML = top5.map(s=>{
+    const cls = s.pct >= 0 ? 'red' : 'green';
+    return `<div class="rank-item"><span class="ri-name">${s.name}</span><span class="ri-pct ${cls}">${fmtPct(s.pct)}</span></div>`;
+  }).join('');
+
+  downEl.innerHTML = bottom5.map(s=>{
+    const cls = s.pct >= 0 ? 'red' : 'green';
+    return `<div class="rank-item"><span class="ri-name">${s.name}</span><span class="ri-pct ${cls}">${fmtPct(s.pct)}</span></div>`;
+  }).join('');
+}
+
+// ====== 渲染：板块资金流向 ======
+function renderFlowRanking(){
+  const el = document.getElementById('flowRank');
+  const sorted = [...sectorData].sort((a,b)=>Math.abs(b.flow) - Math.abs(a.flow));
+  const maxFlow = Math.max(...sorted.map(s=>Math.abs(s.flow)), 1);
+
+  el.innerHTML = sorted.map(s=>{
+    const cls = s.flow >= 0 ? 'red' : 'green';
+    const width = (Math.abs(s.flow) / maxFlow * 100).toFixed(1);
+    const barColor = s.flow >= 0 ? 'var(--red)' : 'var(--green)';
+    return `<div class="flow-rank-item">
+      <span class="fr-name">${s.name}</span>
+      <div class="fr-bar"><div class="fr-bar-fill" style="width:${width}%;background:${barColor}"></div></div>
+      <span class="fr-val ${cls}">${s.flow>=0?'+':''}${fmtFlow(s.flow)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ====== 渲染：个股涨跌排行 ======
+function renderStockRanking(){
+  const allStocks = [];
+  SECTORS.forEach(s=>{
+    s.stocks.forEach(st=>{
+      const d = allStockData[st.c];
+      if(d) allStocks.push({name:st.n, code:st.c, pct:d.pct, price:d.price});
+    });
+  });
+  const sorted = allStocks.sort((a,b)=>b.pct - a.pct);
+  const top5 = sorted.slice(0, 5);
+  const bottom5 = sorted.slice(-5).reverse();
+
+  document.getElementById('stockRankUp').innerHTML = top5.map(s=>{
+    const cls = colorClass(s.pct);
+    return `<div class="rank-item"><span class="ri-name">${s.name}</span><span class="ri-pct ${cls}">${fmtPct(s.pct)}</span></div>`;
+  }).join('');
+
+  document.getElementById('stockRankDown').innerHTML = bottom5.map(s=>{
+    const cls = colorClass(s.pct);
+    return `<div class="rank-item"><span class="ri-name">${s.name}</span><span class="ri-pct ${cls}">${fmtPct(s.pct)}</span></div>`;
+  }).join('');
+}
+
+// ====== 渲染：晚间复盘播报 ======
+function renderReview(){
+  const el = document.getElementById('reviewCard');
+  const now = new Date();
+  const hour = now.getHours();
+
+  if(hour < 15){
+    el.innerHTML = `<div class="rv-title">📊 等待收盘后生成复盘...</div>
+      <div class="rv-content" style="color:var(--sub)">收盘后（15:00）将自动生成今日复盘总结</div>`;
+    return;
+  }
+
+  // ===== 收集所有数据 =====
+  let upCount=0, downCount=0, flatCount=0, limitUp=0, limitDown=0, totalFlow=0;
+  let bestStock=null, worstStock=null;
+  const sectorStats = [];
+  const allStocksArr = [];
+
+  SECTORS.forEach(s=>{
+    let sFlow=0, sPct=0, sCount=0;
+    s.stocks.forEach(st=>{
+      const d = allStockData[st.c];
+      if(!d) return;
+      if(d.pct > 0) upCount++;
+      else if(d.pct < 0) downCount++;
+      else flatCount++;
+      if(isLimitUp(st.c, d.pct)) limitUp++;
+      if(isLimitDown(st.c, d.pct)) limitDown++;
+      totalFlow += d.mainFlow || 0;
+      sFlow += d.mainFlow || 0;
+      sPct += d.pct || 0;
+      sCount++;
+      if(!bestStock || d.pct > bestStock.pct) bestStock = {name:st.n, pct:d.pct, code:st.c};
+      if(!worstStock || d.pct < worstStock.pct) worstStock = {name:st.n, pct:d.pct, code:st.c};
+      allStocksArr.push({name:st.n, code:st.c, pct:d.pct, price:d.price, flow:d.mainFlow||0, sector:s.name});
+    });
+    sectorStats.push({name:s.name, pct: sCount>0 ? sPct/sCount : 0, flow:sFlow, count:sCount});
+  });
+
+  const sortedSectors = [...sectorStats].sort((a,b)=>b.pct-a.pct);
+  const bestSector = sortedSectors[0];
+  const worstSector = sortedSectors[sortedSectors.length-1];
+  const sortedStocks = [...allStocksArr].sort((a,b)=>b.pct-a.pct);
+  const top5Stocks = sortedStocks.slice(0,5);
+  const bottom5Stocks = sortedStocks.slice(-5).reverse();
+  const flowInTop3 = [...sectorStats].sort((a,b)=>b.flow-a.flow).slice(0,3);
+  const flowOutTop3 = [...sectorStats].sort((a,b)=>a.flow-b.flow).slice(0,3);
+  const flowInMax = Math.max(...flowInTop3.map(s=>Math.abs(s.flow)),1);
+  const flowOutMax = Math.max(...flowOutTop3.map(s=>Math.abs(s.flow)),1);
+
+  const sh = allStockData['sh000001'];
+  const sz = allStockData['sz399001'];
+  const cy = allStockData['sz399006'];
+  const total = upCount + downCount + flatCount;
+  const upRatio = total > 0 ? (upCount/total*100).toFixed(1) : 0;
+  const downRatio = total > 0 ? (downCount/total*100).toFixed(1) : 0;
+
+  // 情绪判断
+  let mood, moodColor, moodText;
+  const upMinusDown = upCount - downCount;
+  if(upMinusDown > total*0.6){mood='强势做多';moodColor='red';moodText='市场情绪高涨，多头占据绝对优势，赚钱效应明显。'}
+  else if(upMinusDown > total*0.3){mood='偏强';moodColor='red';moodText='市场整体偏强，上涨家数明显多于下跌，可适度参与。'}
+  else if(upMinusDown > -total*0.2){mood='震荡';moodColor='#888';moodText='市场多空胶着，涨跌互现，方向不明，建议观望为主。'}
+  else if(upMinusDown > -total*0.5){mood='偏弱';moodColor='green';moodText='市场整体偏弱，下跌家数较多，需谨慎操作，控制仓位。'}
+  else{mood='弱势调整';moodColor='green';moodText='市场情绪低迷，空头占据主导，亏钱效应明显，建议规避风险。'}
+
+  // 生成总结文字
+  const dateStr = now.toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric'});
+  let summaryText = `今日（${dateStr}）A股收盘，`;
+  if(sh){summaryText += `上证指数报${fmtPrice(sh.price)}点，${sh.pct>=0?'涨':'跌'}${fmtPct(sh.pct)}；`;}
+  if(sz){summaryText += `深证成指报${fmtPrice(sz.price)}点，${sz.pct>=0?'涨':'跌'}${fmtPct(sz.pct)}；`;}
+  if(cy){summaryText += `创业板指报${fmtPrice(cy.price)}点，${cy.pct>=0?'涨':'跌'}${fmtPct(cy.pct)}。`;}
+  summaryText += `67只样本股中，${upCount}只上涨、${downCount}只下跌、${flatCount}只平盘，涨停${limitUp}只、跌停${limitDown}只。`;
+  summaryText += `主力资金${totalFlow>=0?'净流入':'净流出'}${fmtFlow(totalFlow)}。`;
+  summaryText += `${bestSector.name}领涨（${fmtPct(bestSector.pct)}），${worstSector.name}领跌（${fmtPct(worstSector.pct)}）。`;
+  summaryText += `个股方面，${bestStock.name}涨幅居首（${fmtPct(bestStock.pct)}），${worstStock.name}跌幅最大（${fmtPct(worstStock.pct)}）。`;
+  summaryText += moodText;
+
+  // 板块涨跌表格
+  const sectorTableHtml = sortedSectors.map((s,i)=>{
+    const cls = s.pct >= 0 ? 'red' : 'green';
+    const flowCls = s.flow >= 0 ? 'red' : 'green';
+    return `<tr>
+      <td>${i+1}</td>
+      <td style="font-weight:600">${s.name}</td>
+      <td class="${cls}" style="font-weight:600">${fmtPct(s.pct)}</td>
+      <td class="${flowCls}">${s.flow>=0?'+':''}${fmtFlow(s.flow)}</td>
+      <td style="color:var(--sub)">${s.count}只</td>
+    </tr>`;
+  }).join('');
+
+  // 涨幅TOP5标签
+  const top5Html = top5Stocks.map(s=>{
+    const cls = colorClass(s.pct);
+    return `<div class="rv-stock-tag"><span class="tag-name">${s.name}</span><span class="tag-pct ${cls}">${fmtPct(s.pct)}</span></div>`;
+  }).join('');
+
+  // 跌幅TOP5标签
+  const bottom5Html = bottom5Stocks.map(s=>{
+    const cls = colorClass(s.pct);
+    return `<div class="rv-stock-tag"><span class="tag-name">${s.name}</span><span class="tag-pct ${cls}">${fmtPct(s.pct)}</span></div>`;
+  }).join('');
+
+  // 资金流入TOP3
+  const flowInHtml = flowInTop3.map(s=>{
+    const w = (Math.abs(s.flow)/flowInMax*100).toFixed(1);
+    return `<div class="rv-flow-row"><span class="rf-name">${s.name}</span><div class="rf-bar"><div class="rf-fill" style="width:${w}%;background:var(--red)"></div></div><span class="rf-val red">+${fmtFlow(s.flow)}</span></div>`;
+  }).join('');
+
+  // 资金流出TOP3
+  const flowOutHtml = flowOutTop3.map(s=>{
+    const w = (Math.abs(s.flow)/flowOutMax*100).toFixed(1);
+    return `<div class="rv-flow-row"><span class="rf-name">${s.name}</span><div class="rf-bar"><div class="rf-fill" style="width:${w}%;background:var(--green)"></div></div><span class="rf-val green">${fmtFlow(s.flow)}</span></div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="rv-title">📊 今日复盘播报 · ${dateStr}</div>
+    <div class="rv-content">
+      <!-- 一、大盘概况 -->
+      <div class="rv-row"><span>上证指数</span><span class="rv-val ${sh?.pct>=0?'red':'green'}">${fmtPrice(sh?.price)} (${fmtPct(sh?.pct)})</span></div>
+      <div class="rv-row"><span>深证成指</span><span class="rv-val ${sz?.pct>=0?'red':'green'}">${fmtPrice(sz?.price)} (${fmtPct(sz?.pct)})</span></div>
+      <div class="rv-row"><span>创业板指</span><span class="rv-val ${cy?.pct>=0?'red':'green'}">${fmtPrice(cy?.price)} (${fmtPct(cy?.pct)})</span></div>
+
+      <!-- 二、涨跌统计 -->
+      <div class="rv-section">
+        <div class="rv-section-title">📈 涨跌统计</div>
+        <div class="rv-row"><span>上涨 / 下跌 / 平盘</span><span><span class="rv-val red">${upCount}</span> / <span class="rv-val green">${downCount}</span> / <span class="rv-val">${flatCount}</span></span></div>
+        <div class="rv-row"><span>涨跌比</span><span class="rv-val">${upRatio}% : ${downRatio}%</span></div>
+        <div class="rv-row"><span>涨停 / 跌停</span><span><span class="rv-val red">${limitUp}</span> / <span class="rv-val green">${limitDown}</span></span></div>
+        <div class="rv-row"><span>主力资金</span><span class="rv-val ${totalFlow>=0?'red':'green'}">${totalFlow>=0?'净流入':'净流出'} ${fmtFlow(totalFlow)}</span></div>
+        <div class="rv-row"><span>市场情绪</span><span class="rv-val" style="color:${moodColor}">${mood}</span></div>
+      </div>
+
+      <!-- 三、板块涨跌排行 -->
+      <div class="rv-section">
+        <div class="rv-section-title">🏦 板块涨跌排行</div>
+        <table class="rv-sector-table">
+          <thead><tr><th>#</th><th>板块</th><th>涨跌幅</th><th>主力资金</th><th>成分股</th></tr></thead>
+          <tbody>${sectorTableHtml}</tbody>
+        </table>
+      </div>
+
+      <!-- 四、个股涨跌TOP5 -->
+      <div class="rv-section">
+        <div class="rv-section-title">🏆 涨幅 TOP5</div>
+        <div class="rv-stock-list">${top5Html}</div>
+      </div>
+      <div class="rv-section">
+        <div class="rv-section-title" style="color:var(--green)">📉 跌幅 TOP5</div>
+        <div class="rv-stock-list">${bottom5Html}</div>
+      </div>
+
+      <!-- 五、资金流向 -->
+      <div class="rv-section">
+        <div class="rv-section-title" style="color:var(--red)">💰 资金流入 TOP3</div>
+        ${flowInHtml}
+      </div>
+      <div class="rv-section">
+        <div class="rv-section-title" style="color:var(--green)">💸 资金流出 TOP3</div>
+        ${flowOutHtml}
+      </div>
+
+      <!-- 六、今日总结 -->
+      <div class="rv-section">
+        <div class="rv-section-title">📝 今日总结</div>
+        <div class="rv-summary">${summaryText}</div>
+      </div>`;
+}
+
+// ====== 渲染：全部 ======
+function renderAll(){
+  renderIndexBar();
+  renderGoldPrice();
+  renderSummary();
+  renderSentimentGauge();
+  renderSectorGrid();
+  renderSectorRanking();
+  renderFlowRanking();
+  renderStockRanking();
+  renderReview();
+}
+
+// ====== 启动 ======
+async function init(){
+  await fetchAllData();
+  renderAll();
+  document.getElementById('refreshInfo').textContent = '已刷新 ' + new Date().toLocaleTimeString('zh-CN');
+
+  setInterval(async()=>{
+    await fetchAllData();
+    renderAll();
+    document.getElementById('refreshInfo').textContent = '已刷新 ' + new Date().toLocaleTimeString('zh-CN');
+  }, REFRESH_MS);
+}
+
+init();
+</script>
+</body>
+</html>
